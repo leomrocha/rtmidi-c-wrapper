@@ -98,6 +98,14 @@ extern "C" {
 	 * returns true if the midi connections (I/O) are open. false false otherwise (error, disconnect or something else)
 	 **/
 	EXPORT_DLL int isConnected();
+
+	/**
+	* returns true if the midi connections (I/O) are open. false false otherwise (error, disconnect or something else)
+	**/
+	EXPORT_DLL int ìsOutputOpen();
+	EXPORT_DLL int ìsInputOpen();
+
+
 	/**
 	 * Callback that will get called when a message arrives
 	 * this is best sent immediately after initialization in order to avoid 

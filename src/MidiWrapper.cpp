@@ -140,7 +140,8 @@ extern "C" {
 		if ( nPorts > 0 ) {
 			portsAvailable = true;
 			if(port>=nPorts){
-				port = nPorts-1;
+				//port = nPorts-1;
+				port = 0;
 			}
 			//actually open the port
 			rtmidi->openPort( port );
@@ -150,7 +151,7 @@ extern "C" {
 			rtmidi->openVirtualPort();
 		}
 	  //TODO make something to deal with errors here
-	  return true;
+	  return portsAvailable;
 	}
 
 	///////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -217,7 +218,7 @@ extern "C" {
 			port = portUsed;
 		}
 		if( port < 0){
-			return "";
+			return "NONAME";
 		}
 		std::string portName = midiin->getPortName(portIndex);
 		return portName.c_str();
@@ -234,7 +235,7 @@ extern "C" {
 			//std::cout << " [DEBUG] C STR Input Port #" << port+1 << ": " << name.c_str() << '\n';
 			return name.c_str();
 		}
-		return "";
+		return "NONAME_IN";
 	}
 
 	unsigned int getOutPortCount(){
@@ -246,7 +247,7 @@ extern "C" {
 			std::string name = midiout->getPortName(port);
 			return name.c_str();
 		}
-		return "";
+		return "NONAME_OUT";
 	}
 
 	///////////////////////////////////////////////////////////////////////////////////////////////////////
