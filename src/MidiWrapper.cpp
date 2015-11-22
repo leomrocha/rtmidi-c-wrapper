@@ -39,16 +39,17 @@
 
 #include "MidiWrapper.h"
 #include <queue>
+#include <string>
 
 //define EXPORT_API __declspec(dllexport)
 
 //holders
-RtMidiIn  *midiin = 0;
-RtMidiOut *midiout = 0;
+RtMidiIn  *midiin = NULL;
+RtMidiOut *midiout = NULL;
 
 //device status
 //std::string deviceName = "NONAME";
-unsigned int portUsed = -1;
+//unsigned int portUsed = -1;
 
 //midi notes status (velocity)
 std::vector<int> notesStatusVector;
@@ -90,16 +91,18 @@ extern "C" {
 		std::vector< unsigned char > nMessage;
 
 		//TODO keep track of the notes status
-		unsigned int nBytes = message->size();
+		//unsigned int nBytes = message->size();
+		size_t nBytes = message->size();
 		for ( unsigned int i=0; i<nBytes; i++ ){
 			unsigned char bi = message->at(i);
 			nMessage.push_back(bi);
-			std::cout << "Byte " << i << " = " << (int)bi << ", ";
+			//std::cout << "Byte " << i << " = " << (int)bi << ", ";
 
 		}
 		////////////////////////////////////
 		//deal with noteOn and noteOff messages and push them in the
 		//if there is a message and is actually a noteON or noteOFF
+		//todo add other things as the pedals
 		if ( nBytes > 0 && (message->at(0) == 144 || message->at(0) == 128)){
 			try{
 
@@ -121,6 +124,7 @@ extern "C" {
 
 		}
 		////////////////////////////////////
+		//all the messages types are stored as they came in here
 		messagesQueue.push(nMessage);
 
 	}
@@ -128,184 +132,176 @@ extern "C" {
 	//midi port opening and selection (from the ones available)
 	bool chooseMidiPort( RtMidi *rtmidi, int port)
 	{
+		//
+		if (rtmidi == NULL) {
+			return false;
+		}
 		//port <0 signifies open the virtual port as none is available
 		//port == 0 signifies open the first port available
 		//let's say by default there are no ports available so will open virtual port
+		
 		bool portsAvailable = false;
-		int nPorts = rtmidi->getPortCount();
-		//no available ports
-		//if ( nPorts == 0){
-		//	portsAvailable = false;
-		//}
-		if ( nPorts > 0 ) {
-			portsAvailable = true;
-			if(port>=nPorts){
-				//port = nPorts-1;
-				port = 0;
+		try {
+			int nPorts = rtmidi->getPortCount();
+			//no available ports
+			//if ( nPorts == 0){
+			//	portsAvailable = false;
+			//}
+			if (nPorts > 0) {
+				portsAvailable = true;
+				if (port >= nPorts) {
+					//port = nPorts-1;
+					port = 0;
+				}
+				//actually open the port
+				rtmidi->openPort(port);
+				//portUsed = port;
 			}
-			//actually open the port
-			rtmidi->openPort( port );
-			portUsed = port;
+			if (port < 0 || !portsAvailable) {
+				rtmidi->openVirtualPort();
+			}
 		}
-		if ( port < 0  || !portsAvailable) {
-			rtmidi->openVirtualPort();
+		catch (...) {
+			portsAvailable = false;
 		}
 	  //TODO make something to deal with errors here
 	  return portsAvailable;
 	}
 
 	///////////////////////////////////////////////////////////////////////////////////////////////////////
-	/// MIDI Initialization & status
-	int startMidi(int port){
-		int success = 1; //true;
-		try {
-			//setup variables, mandatory before anything or the libray will give runtime exceptions
-			for(int i=0; i<MIDI_STATUS_VECTORS_SIZE; i++){
-				notesStatusVector.push_back(0);
-			}
-			for(int i=0; i<MIDI_STATUS_VECTORS_SIZE; i++){
-				notesStatusTimestampsVector.push_back(0.0);
-			}
+	/// MIDI Initialization, Finalization & Status
 
-			// RtMidiIn constructor ... exception possible
+	EXPORT_DLL void setupEnv() {
+		//setup variables, mandatory before anything or the libray will give runtime exceptions
+		for (int i = 0; i<MIDI_STATUS_VECTORS_SIZE; i++) {
+			notesStatusVector.push_back(0);
+		}
+		for (int i = 0; i<MIDI_STATUS_VECTORS_SIZE; i++) {
+			notesStatusTimestampsVector.push_back(0.0);
+		}
+	}
+
+	EXPORT_DLL int createInput() {
+		int ret = 1;
+		try { 
+			if (midiin != NULL) { ret = destroyInput(); }
 			midiin = new RtMidiIn();
-			if ( chooseMidiPort( midiin, port ) == false ){ success = 0; } //failure == success = false
+		} catch(...){ ret = 0; }
+		return ret;
+	}
 
-			// Set our callback function.  This should be done immediately after
-			// opening the port to avoid having incoming messages written to the
-			// queue instead of sent to the callback function.
-			midiin->setCallback( &incallback );
+	EXPORT_DLL void cleanupInputEnv() {
+		//there is this swap idiom but not clear() function
+		notesMessagesQueue.swap(std::queue<MidiNoteMessage>());
+		messagesQueue.swap(std::queue < std::vector< unsigned char > >());
+		//then the new queue gets out of scope and "gc" takes its place
+		notesStatusVector.clear();
+		notesStatusTimestampsVector.clear();
+	}
 
-			// Don't ignore sysex, timing, or active sensing messages.
-			//midiin->ignoreTypes( false, false, false );
+	EXPORT_DLL int destroyInput() {
+		int ret = 1;
+		try {
+			if (midiin != NULL) {
+				if (midiin->isPortOpen()) { midiin->closePort(); }
+				delete midiin;
+			}
+		} catch (...) { ret = 0; }
+		return ret;
+	}
+	
+	EXPORT_DLL int openInputPort(int port) {
+		int ret = 0;
+		if(chooseMidiPort(midiin, port) == true) {
+			midiin->setCallback(&incallback);
+			ret = 1;
+		}
+		return ret;
+	}
 
-			// RtMidiOut constructor ... exception possible
+	EXPORT_DLL void closeInputPort() {
+		if (midiin != NULL && midiin->isPortOpen()) {
+			midiin->closePort();
+		}
+	}
+
+	EXPORT_DLL int isInputPortOpen() {
+		int ret = 0;
+		if (midiin != NULL) { ret = (midiin->isPortOpen() ? 1 : 0); }
+		return ret;
+	}
+
+	EXPORT_DLL unsigned int getInPortCount() {
+		unsigned int ret = 0;
+		if (midiin != NULL) { ret = midiin->getPortCount(); }
+		return ret;
+	}
+
+	EXPORT_DLL void getInputPortName(char* name, unsigned int port) {
+		if (midiin != NULL && port>=0 && midiin->getPortCount() > port) {
+			std::string pname = midiin->getPortName(port);
+			const char* cname = pname.c_str();
+			strcpy_s(name, pname.size(), cname);
+		}
+		//nothing
+	}
+
+	EXPORT_DLL int createOutput() {
+		int ret = 1;
+		try {
+			if (midiout != NULL) { ret = destroyOutput(); }
 			midiout = new RtMidiOut();
-			if ( chooseMidiPort( midiout, port ) == false ){ success = 0; }
-
-			if (!success){ closeMidi(); }
-
-		} catch ( RtMidiError &error ) {
-			error.printMessage();
 		}
-		//catch ( ... ) {
-			//some bigger error here
-		//}
-		return success;
+		catch (...) { ret = 0; }
+		return ret;
 	}
 
-	int closeMidi(){
-		if (midiin != NULL){
-			delete midiin;
+	EXPORT_DLL int destroyOutput() {
+		int ret = 1;
+		try {
+			if (midiout != NULL) {
+				if (midiout->isPortOpen()) { midiout->closePort(); }
+				delete midiout;
+			}
 		}
-		if (midiout != NULL){
-			delete midiout;
-		}
-		return 1; //true;
+		catch (...) { ret = 0; }
+		return ret;
 	}
 
-	int isConnected(){
-		int status = 0; //false;
-		if(midiin != NULL && midiout != NULL){
-			status = midiin->isPortOpen() && midiout->isPortOpen();
-		}
-		return status;
+	EXPORT_DLL int isOutputPortOpen() {
+		int ret = 0;
+		if (midiout != NULL) { ret = (midiout->isPortOpen() ? 1 : 0); }
+		return ret;
 	}
 
-	const char* getDeviceName(int portIndex){
-		int port = portIndex;
-		if(portIndex<0){
-			port = portUsed;
-		}
-		if( port < 0){
-			return "NONAME";
-		}
-		std::string portName = midiin->getPortName(portIndex);
-		return portName.c_str();
+	EXPORT_DLL unsigned int getOutPortCount() {
+		unsigned int ret = 0;
+		if (midiout != NULL) { ret = midiout->getPortCount(); }
+		return ret;
 	}
 
-	
-	unsigned int getInPortCount(){
-		return midiin->getPortCount();
+	EXPORT_DLL int openOutputPort(int port) {
+		int ret = 0;
+		(chooseMidiPort(midiout, port) == true) ? ret = 1 : ret = 0;
+		return ret;
 	}
-	const char* getInPortName(unsigned int port){
-		if(midiin != NULL && midiin->getPortCount() > port){
-			std::string name = midiin->getPortName(port);
-			//std::cout << " [DEBUG] Input Port #" << port+1 << ": " << name << '\n';
-			//std::cout << " [DEBUG] C STR Input Port #" << port+1 << ": " << name.c_str() << '\n';
-			return name.c_str();
+
+	EXPORT_DLL void closeOutputPort() {
+		if (midiout != NULL && midiout->isPortOpen()) {
+			midiout->closePort();
 		}
-		return "NONAME_IN";
 	}
 
-	unsigned int getOutPortCount(){
-		return midiout->getPortCount();
-	}
-
-	const char* getOutPortName(unsigned int port){
-		if(midiout != NULL && midiout->getPortCount() > port){
-			std::string name = midiout->getPortName(port);
-			return name.c_str();
+	EXPORT_DLL void getOutputPortName(char* name, unsigned int port) {
+		if (midiout != NULL && port >= 0 && midiout->getPortCount() > port) {
+			std::string pname = midiout->getPortName(port);
+			const char* cname = pname.c_str();
+			strcpy_s(name, pname.size(), cname);
 		}
-		return "NONAME_OUT";
+		//nothing
 	}
-
 	///////////////////////////////////////////////////////////////////////////////////////////////////////
-	/// MIDI Input
-
-	int noteStatus(int noteId){
-		return notesStatusVector[noteId];
-	}
-
-	void notesStatus(std::vector<int> *notes){
-		//check that *notes is not null
-		if(notes == NULL){
-			return;
-		}
-		//clear and copy the current vector
-		notes->clear();
-		//1 to 128 index, this keeps the real id
-		for(int i=1; i<MIDI_STATUS_VECTORS_SIZE-1;i++){
-			notes->push_back(notesStatusVector[i]);
-		}
-	}
-
-	void notesStatusTimestamps(std::vector<double> *notes){
-		//check that *notes is not null
-		if(notes == NULL){
-			return;
-		}
-		//clear and copy the current vector
-		notes->clear();
-		//1 to 128 index, this keeps the real id
-		for(int i=1; i<MIDI_STATUS_VECTORS_SIZE-1;i++){
-			notes->push_back(notesStatusTimestampsVector[i]);
-		}
-	}
-	
-	//get next message  TODO make it C compatible somehow
-	//std::vector< unsigned char > getNextMessage(){
-	//	std::vector< unsigned char > lm = messagesQueue.front();
-	//	messagesQueue.pop();
-	//	return lm;
-	//}
-	//get all messages in the queue
-
-	//get next noteOn or noteOff message
-	MidiNoteMessage getNextNoteMessage(void) {
-		//get reference
-		if(notesMessagesQueue.size() > 0){
-			MidiNoteMessage nm = notesMessagesQueue.front();
-			//erase it
-			notesMessagesQueue.pop();
-			return nm;
-		}
-		//do something to return an empty message
-		MidiNoteMessage nm;
-
-		return nm;
-	}
-	//get all messages on the notes queue
+	// MIDI Input
 
 	//get next noteOn or noteOff message
 	void fillWithNextNoteMessage(MidiNoteMessage &message) {
@@ -322,26 +318,68 @@ extern "C" {
 		}
 	}
 
+	EXPORT_DLL long getNextMessageAsLong() {
+		long ret = 0x00000000;
+		if (notesMessagesQueue.size() > 0) {
+			/*
+			//directly from bytes
+			std::vector< unsigned char > bm = messagesQueue.front();
+			messagesQueue.pop();
+			if (bm.size() <= 8) {
+				for (int i = 7, j = 0; i >= 0, j < bm.size(); i--, j++) {
+					ret = ret | bm[j] << 8 * i;
+				}
+			}*/
+			//from MidiNoteMessage
+			MidiNoteMessage nm = notesMessagesQueue.front();
+			//erase it
+			notesMessagesQueue.pop();
 
+			ret = nm.code << 8*7;
+			ret = ret | nm.id << 8*6;
+			ret = ret | nm.velocity << 8*5;
+			//nm.timestamp; // ignore timestamp for the moment
+		}
+		return ret;
+	}
 	///////////////////////////////////////////////////////////////////////////////////////////////////////
-	/// MIDI Output
+	// MIDI Output
 
-	void noteOn(unsigned char id,unsigned char velocity, int channel){
+	EXPORT_DLL void note60Off() {
+		std::vector<unsigned char> message;
+		// Note Off: 128, note id, velocity
+		message.push_back(NOTE_OFF_MESSAGE);
+		message.push_back(60);
+		message.push_back(0);
+		midiout->sendMessage(&message);
+	}
+
+	EXPORT_DLL void note60On() {
+		//channel not used yet
+		std::vector<unsigned char> message;
+		// Note On: 144, note id, velocity
+		message.push_back(NOTE_ON_MESSAGE);
+		message.push_back(60);
+		message.push_back(100);
+		midiout->sendMessage(&message);
+	}
+
+	EXPORT_DLL void noteOn(unsigned char id, unsigned char velocity, int channel) {
 		//channel not used yet
 		std::vector<unsigned char> message;
 		// Note On: 144, note id, velocity
 		message.push_back(NOTE_ON_MESSAGE);
 		message.push_back(id);
 		message.push_back(velocity);
-		midiout->sendMessage( &message );
+		midiout->sendMessage(&message);
 	}
-	
-	void noteOff(unsigned char id, int channel){
+
+	EXPORT_DLL void noteOff(unsigned char id, int channel) {
 		std::vector<unsigned char> message;
 		// Note Off: 128, note id, velocity
 		message.push_back(NOTE_OFF_MESSAGE);
 		message.push_back(id);
 		message.push_back(0);
-		midiout->sendMessage( &message );	
+		midiout->sendMessage(&message);
 	}
 }
