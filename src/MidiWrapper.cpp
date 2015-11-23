@@ -46,7 +46,9 @@
 //holders
 RtMidiIn  *midiin = NULL;
 RtMidiOut *midiout = NULL;
-
+//name holders for temporary passing (buffers ...)
+char in_name[1024];
+char out_name[1024];
 //device status
 //std::string deviceName = "NONAME";
 //unsigned int portUsed = -1;
@@ -205,6 +207,7 @@ extern "C" {
 			if (midiin != NULL) {
 				if (midiin->isPortOpen()) { midiin->closePort(); }
 				delete midiin;
+				midiin = NULL;
 			}
 		} catch (...) { ret = 0; }
 		return ret;
@@ -246,6 +249,19 @@ extern "C" {
 		//nothing
 	}
 
+	EXPORT_DLL char * getInputPortNamePtr(unsigned int port) {
+		if (midiin != NULL && port >= 0 && midiin->getPortCount() > port) {
+			std::string pname = midiin->getPortName(port);
+			const char* cname = pname.c_str();
+			strcpy_s(in_name, pname.size(), cname);
+			
+		}
+		else {
+			strcpy_s(in_name, 6, "NONAME");
+		}
+		return in_name;
+	}
+
 	EXPORT_DLL int createOutput() {
 		int ret = 1;
 		try {
@@ -262,6 +278,7 @@ extern "C" {
 			if (midiout != NULL) {
 				if (midiout->isPortOpen()) { midiout->closePort(); }
 				delete midiout;
+				midiout = NULL;
 			}
 		}
 		catch (...) { ret = 0; }
@@ -300,8 +317,32 @@ extern "C" {
 		}
 		//nothing
 	}
+
+	EXPORT_DLL char * getOutputPortNamePtr(unsigned int port) {
+		if (midiin != NULL && port >= 0 && midiin->getPortCount() > port) {
+			std::string pname = midiout->getPortName(port);
+			const char* cname = pname.c_str();
+			strcpy_s(out_name, pname.size(), cname);
+
+		}
+		else {
+			strcpy_s(out_name, 6, "NONAME");
+		}
+		return out_name;
+	}
 	///////////////////////////////////////////////////////////////////////////////////////////////////////
 	// MIDI Input
+
+	EXPORT_DLL MidiNoteMessage getNextMessageStruct() {
+		if (notesMessagesQueue.size() > 0) {
+			MidiNoteMessage nm = notesMessagesQueue.front();
+			//erase it
+			notesMessagesQueue.pop();
+			return nm;
+		}
+		MidiNoteMessage em;
+		return em;
+	}
 
 	//get next noteOn or noteOff message
 	void fillWithNextNoteMessage(MidiNoteMessage &message) {
@@ -342,27 +383,24 @@ extern "C" {
 		}
 		return ret;
 	}
+
+	EXPORT_DLL unsigned int getNextMessageAsUInt() {
+		long ret = 0x00000000;
+		if (notesMessagesQueue.size() > 0) {
+			//from MidiNoteMessage
+			MidiNoteMessage nm = notesMessagesQueue.front();
+			//erase it
+			notesMessagesQueue.pop();
+
+			ret = nm.code << 8 *3;
+			ret = ret | nm.id << 8 * 2;
+			ret = ret | nm.velocity << 8 * 1;
+			//nm.timestamp; // ignore timestamp for the moment
+		}
+		return ret;
+	}
 	///////////////////////////////////////////////////////////////////////////////////////////////////////
 	// MIDI Output
-
-	EXPORT_DLL void note60Off() {
-		std::vector<unsigned char> message;
-		// Note Off: 128, note id, velocity
-		message.push_back(NOTE_OFF_MESSAGE);
-		message.push_back(60);
-		message.push_back(0);
-		midiout->sendMessage(&message);
-	}
-
-	EXPORT_DLL void note60On() {
-		//channel not used yet
-		std::vector<unsigned char> message;
-		// Note On: 144, note id, velocity
-		message.push_back(NOTE_ON_MESSAGE);
-		message.push_back(60);
-		message.push_back(100);
-		midiout->sendMessage(&message);
-	}
 
 	EXPORT_DLL void noteOn(unsigned char id, unsigned char velocity, int channel) {
 		//channel not used yet
@@ -382,4 +420,12 @@ extern "C" {
 		message.push_back(0);
 		midiout->sendMessage(&message);
 	}
+}
+
+
+RtMidi* getMidiIn() {
+	return midiin;
+}
+RtMidi* getMidiOut() {
+	return midiout;
 }

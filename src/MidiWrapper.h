@@ -119,6 +119,13 @@ extern "C" {
 	EXPORT_DLL void getInputPortName(char* name, unsigned int port = 0);
 
 	/**
+	* copies the given port (if exists) name in the static space allocated (max 1024 chars)
+	* and returns the pointer back to the caller
+	* @param
+	*/
+	EXPORT_DLL char * getInputPortNamePtr(unsigned int port = 0);
+
+	/**
 	 * sets up an output object.
 	 * If exists then disconnects and deletes creating a new connection
 	 * returns 0 if failed, 1 otherwise
@@ -152,9 +159,22 @@ extern "C" {
 	*/
 	EXPORT_DLL void getOutputPortName(char* name, unsigned int port = 0);
 
+	/**
+	* copies the given port (if exists) name in the static space allocated (max 1024 chars)
+	* and returns the pointer back to the caller
+	* @param
+	*/
+	EXPORT_DLL char * getOutputPortNamePtr(unsigned int port = 0);
 
 	///////////////////////////////////////////////////////////////////////////////////////////////////////
 	//MIDI Input
+	/**
+	* returns a MidiNoteMessage to the caller
+	* if the input queue is not empty will return the next one
+	if input queue is EMPTY will return a zero filled message (id, code and velocity are 0)
+	* this is a destructive read (the message read will be popped from the queue)
+	**/
+	EXPORT_DLL MidiNoteMessage __cdecl getNextMessageStruct();
 
 	/**
 	* fills the given message with the next message in the queue.
@@ -164,6 +184,7 @@ extern "C" {
 	EXPORT_DLL void __cdecl fillWithNextNoteMessage(MidiNoteMessage &message);
 
 	EXPORT_DLL long getNextMessageAsLong();
+	EXPORT_DLL unsigned int getNextMessageAsUInt();
 	///////////////////////////////////////////////////////////////////////////////////////////////////////
 	// MIDI Output
 	/**
@@ -172,18 +193,20 @@ extern "C" {
 	* channel default 0
 	**/
 	EXPORT_DLL void noteOn(unsigned char id, unsigned char velocity, int channel = 0);
-	EXPORT_DLL void note60On(); //test function only
+
 	/**
 	* id: midi id of the note to turn off
 	* velocity: [0-127]
 	* channel default 0
 	**/
 	EXPORT_DLL void noteOff(unsigned char  id, int channel = 0);
-	EXPORT_DLL void note60Off(); //test function only
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 // Non extern functions, that later will need to either be adapted for extern c or discarded
+
+RtMidi* getMidiIn();
+RtMidi* getMidiOut();
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 #endif //MIDIWRAPPER
