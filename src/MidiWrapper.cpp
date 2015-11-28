@@ -244,7 +244,7 @@ extern "C" {
 		if (midiin != NULL && port>=0 && midiin->getPortCount() > port) {
 			std::string pname = midiin->getPortName(port);
 			const char* cname = pname.c_str();
-			strcpy_s(name, pname.size(), cname);
+			strcpy_s(name, pname.size() + 1, cname);
 		}
 		//nothing
 	}
@@ -253,11 +253,11 @@ extern "C" {
 		if (midiin != NULL && port >= 0 && midiin->getPortCount() > port) {
 			std::string pname = midiin->getPortName(port);
 			const char* cname = pname.c_str();
-			strcpy_s(in_name, pname.size(), cname);
+			strcpy_s(in_name, pname.size() + 1, cname);
 			
 		}
 		else {
-			strcpy_s(in_name, 6, "NONAME");
+			strcpy_s(in_name, 6 + 1, "NONAME");
 		}
 		return in_name;
 	}
@@ -313,7 +313,7 @@ extern "C" {
 		if (midiout != NULL && port >= 0 && midiout->getPortCount() > port) {
 			std::string pname = midiout->getPortName(port);
 			const char* cname = pname.c_str();
-			strcpy_s(name, pname.size(), cname);
+			strcpy_s(name, pname.size() + 1, cname);
 		}
 		//nothing
 	}
@@ -322,11 +322,11 @@ extern "C" {
 		if (midiin != NULL && port >= 0 && midiin->getPortCount() > port) {
 			std::string pname = midiout->getPortName(port);
 			const char* cname = pname.c_str();
-			strcpy_s(out_name, pname.size(), cname);
+			strcpy_s(out_name, pname.size() + 1, cname);
 
 		}
 		else {
-			strcpy_s(out_name, 6, "NONAME");
+			strcpy_s(out_name, 6 + 1, "NONAME");
 		}
 		return out_name;
 	}
@@ -391,7 +391,7 @@ extern "C" {
 			MidiNoteMessage nm = notesMessagesQueue.front();
 			//erase it
 			notesMessagesQueue.pop();
-
+			//Warning with shift might fail with other compilers ... ?? need to previously cast the original before shifting
 			ret = nm.code << 8 *3;
 			ret = ret | nm.id << 8 * 2;
 			ret = ret | nm.velocity << 8 * 1;
@@ -401,6 +401,28 @@ extern "C" {
 	}
 	///////////////////////////////////////////////////////////////////////////////////////////////////////
 	// MIDI Output
+
+	//WARNING, might need to use: uint64_t
+	//EXPORT_DLL void sendLimitedMessage(unsigned long data, int nBytes, int channel) {
+	EXPORT_DLL void sendLimitedMessage(unsigned int data, int nBytes, int channel) {
+		//refuse to work with invalid data
+		//if (!data || nBytes < 3 || nBytes > 8) {
+		if (!data || nBytes < 3 || nBytes > 4) {
+			return;
+		}
+		//all the other things, is assummed that the developer knows midi protocol and nothing will be broken...
+		std::vector<unsigned char> message;
+		for (int i = 0; i < nBytes; i++) {
+			//get byte
+			unsigned char b = data & 0xFFFF; 
+			//add to message
+			message.push_back(b);
+			data >> 8; //drop the byte we just read
+		}
+		//TODO verify
+		
+		midiout->sendMessage(&message);
+	}
 
 	EXPORT_DLL void noteOn(unsigned char id, unsigned char velocity, int channel) {
 		//channel not used yet

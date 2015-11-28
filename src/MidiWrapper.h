@@ -188,6 +188,15 @@ extern "C" {
 	///////////////////////////////////////////////////////////////////////////////////////////////////////
 	// MIDI Output
 	/**
+	 * Sends up to 8 bytes to the output.
+	 * @param data: the input to the function, the unsigned long is treated as an 8 byte message
+	 * byte 0 is the head of the message, byte 3 (7) will be the latest byte in the message
+	 * @param nBytes: the number of bytes to send to the output port. [3,4]//[3-8]
+	 **/
+	//EXPORT_DLL void sendLimitedMessage(unsigned long data, int nBytes, int channel = 0);
+	EXPORT_DLL void sendLimitedMessage(unsigned int data, int nBytes, int channel = 0);
+
+	/**
 	* id: midi id of the note to turn on [0-127]
 	* velocity: [0-127]
 	* channel default 0
